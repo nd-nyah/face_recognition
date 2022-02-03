@@ -5,6 +5,7 @@ import time
 import cv2
 import os
 from matplotlib import pyplot as plt
+import tensorflow as tf
 
 
 # image understanding
@@ -31,14 +32,15 @@ def stats_test(sample, label_name, cls_num, chn):
 
 # preprocess, filter , check data distributions/ statistics
 def preprocess(test=None):
-    global down_size
+    # global down_size
+    global ts_image
     processed_dir = os.path.join(out_dir + process_name)
     os.makedirs(processed_dir, exist_ok=True)
 
     labels = os.listdir(raw_dir)
     if not labels:
         raise IOError('labels is empty')
-    image_label = []
+    tensor_image_label = []
 
     for lbl in labels:
 
@@ -48,7 +50,8 @@ def preprocess(test=None):
             if imgs.endswith("pgm"):
                 raw_img = cv2.imread(os.path.join(fpath, imgs), cv2.IMREAD_GRAYSCALE)
                 down_size = cv2.resize(raw_img, (c, r), interpolation=cv2.INTER_LINEAR)
-                image_label.append({'image': down_size, 'label': cls_num})
+                ts_image = tf.constant(down_size, dtype=tf.float32)
+                tensor_image_label.append({'image': ts_image, 'label': cls_num})
 
                 # Display images
                 # cv2.imshow('Image Down Size by defining height and width', down_size)
@@ -57,26 +60,26 @@ def preprocess(test=None):
 
     if test is None:
         # write features and labels to output file
-        print(len(image_label))
-        with open(os.path.join(processed_dir, 'image_label'), 'wb') as f:
-            pickle.dump(image_label, f)
+        print(len(tensor_image_label))
+        with open(os.path.join(processed_dir, 'tensorimage_label'), 'wb') as f:
+            pickle.dump(tensor_image_label, f)
 
     else:
         with open(os.path.join(processed_dir, 'test'), 'wb') as f:
-            pickle.dump(down_size, f)
+            pickle.dump(ts_image, f)
 
     # sample output
-    print(image_label[0]['image'])
-    print(len(image_label))
+    print(tensor_image_label[0]['image'][0])
+    # print(tensor_image_label[0]['label'])
 
 
 if __name__ == '__main__':
     start = time.perf_counter()
 
     # paths and folder name variable
-    in_dir = "GitHub/face_recognition/input"
-    out_dir = "GitHub/face_recognition/output/"
-    process_name = 'processed_YaleFaces_5x3r'
+    in_dir = "/GitHub/face_recognition/input"
+    out_dir = "/GitHub/face_recognition/output/"
+    process_name = 'processed_YaleFaces_50x50r'
     raw_dir = os.path.join(in_dir, 'CroppedYale')
     # print(raw_dir)
 
