@@ -2,6 +2,7 @@ import os
 import pickle
 
 import fire
+import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
@@ -10,10 +11,23 @@ from sklearn.model_selection import train_test_split
 #     x = tf.constant('Tensorflow works!')
 #     print(sess.run(x))
 
+# def next_batch(num, data, labels):
+#     '''
+#     Return a total of `num` random samples and labels.
+#     '''
+#     idx = np.arange(0, len(data))
+#     np.random.shuffle(idx)
+#     idx = idx[:num]
+#     data_shuffle = [data[i] for i in idx]
+#     labels_shuffle = [labels[i] for i in idx]
+#
+#     return np.asarray(data_shuffle), np.asarray(labels_shuffle)
+
+
 # # Yale Facial data input (img shape: 50*50)
 num_input = 50 * 50 * 1
-# Yale Facial Image classes (0-8)
-num_classes = 8
+# Yale Facial Image classes (1-39)
+num_classes = 39
 
 
 class Cnn:
@@ -33,13 +47,13 @@ class Cnn:
         self.x_ = []
 
     def build_graph(self):
-        self.x_ = tf.compat.v1.placeholder("float", shape=[None, 50, 50, 1], name='X')
+        self.x_ = tf.compat.v1.placeholder("float", shape=[None, 32, 32, 1], name='X')
         self.y_ = tf.compat.v1.placeholder("int32", shape=[None, 39], name='Y')
         self.is_training = tf.compat.v1.placeholder(tf.bool)
 
         with tf.name_scope("model") as scope:
             # layer 1
-            conv1 = tf.compat.v1.layers.conv2d(inputs=self.x_, filters=64, kernel_size=[5, 5],
+            conv1 = tf.compat.v1.layers.conv2d(inputs=self.x_, filters=32, kernel_size=[5, 5],
                                                padding="same", activation=None)  # tf.nn.relu
             conv1_bn = tf.compat.v1.layers.batch_normalization(inputs=conv1, axis=-1, momentum=0.9, epsilon=0.001,
                                                                center=True,
@@ -66,7 +80,7 @@ class Cnn:
             pool3 = tf.compat.v1.layers.max_pooling2d(inputs=conv3_bn_relu, pool_size=[2, 2], strides=2)
             # print(pool3)
 
-            pool3_flat = tf.reshape(pool3, [-1, 4 * 4 * 50])
+            pool3_flat = tf.reshape(pool3, [-1, 4 * 4 * 32])
 
             # FC layer 1
             FC1 = tf.compat.v1.layers.dense(inputs=pool3_flat, units=128, activation=tf.nn.relu)
@@ -75,12 +89,12 @@ class Cnn:
             FC2 = tf.compat.v1.layers.dense(inputs=dropout_1, units=64, activation=tf.nn.relu)
             dropout_2 = tf.compat.v1.layers.dropout(inputs=FC2, rate=0.5, training=self.is_training)
             self.logits = tf.compat.v1.layers.dense(inputs=dropout_2, units=39)
-            # self.logits = tf.compat.v1.layers.dense(inputs=FC2, units=8)
+            # self.logits = tf.compat.v1.layers.dense(inputs=FC2, units=39)
 
             with tf.name_scope("loss_func") as scope:
                 self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=self.y_))
-                self.loss_val = tf.reduce_mean(
-                    tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=self.y_))
+                self.loss_val = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+                    logits=self.logits, labels=self.y_))
 
                 # Add loss to tensorboard
                 tf.summary.scalar("loss_train", self.loss)
@@ -114,7 +128,7 @@ class Cnn:
             self.saver = tf.compat.v1.train.Saver(max_to_keep=None)
 
             # it's good to allocate a fraction of memory
-            gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.6)
+            gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.5)
             self.session = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
 
             # summary output configuration logs
@@ -133,11 +147,13 @@ class Cnn:
             # print(img_obj)
 
             for item in img_obj:
-                X.append(item['image'])
+                X.append(tf.reshape(item['image'], [32, 32, 1]))
+                # X.append(item['image'])
                 y.append(item['label'])
 
         # split data
         X_train, X_val, y_train, y_val = train_test_split(X, y)
+        print(X_train[0].shape)
 
         # Convert target to binary class vectors
         y_train = tf.keras.utils.to_categorical(y_train, 39)
@@ -153,16 +169,16 @@ class Cnn:
         dataset_test = dataset_test.batch(batch_size)
 
         # Create an iterator
-        iter_train = dataset_train.make_one_shot_iterator()
+        iter_train = tf.compat.v1.data.make_one_shot_iterator(dataset_train)
         iter_train_op = iter_train.get_next()
-        iter_test = dataset_test.make_one_shot_iterator()
+        iter_test = tf.compat.v1.data.make_one_shot_iterator(dataset_test)
         iter_test_op = iter_test.get_next()
 
         # Build model graph
         self.build_graph()
 
         # Train Loop
-        for i in range(20):
+        for i in range(2000):
             # get batch with cpu
             with tf.device('/cpu:0'):
                 batch_train = self.session.run([iter_train_op])
@@ -203,11 +219,11 @@ class Cnn:
 if __name__ == '__main__':
     # import tensorflow.compat.v1 as tf
     tf.compat.v1.disable_eager_execution()
-    in_dir = r"/GitHub/face_recognition/output/"  # path to processed images
+    in_dir = "/GitHub/face_recognition/output/"  # path to processed images
     input_filename = 'processed_YaleFaces_50x50r'
 
-    out_dir = r"/GitHub/face_recognition/output/"  # path to input target file
+    out_dir = "/GitHub/face_recognition/output/"  # path to input target file
     output_folder = 'trained_models'
-    batch_size_no = 500
+    batch_size_no = 32
 
     fire.Fire(Cnn)
